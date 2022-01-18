@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DesignSurface">
+    <option name="filePathToZoomLevelMap">
+      <map>
+        <entry key="..\:/FH/Projekt 4.-5. Semester/ble/test/app/src/main/res/layout/actionbar_indeterminate_progress.xml" value="0.2957427536231884" />
+        <entry key="..\:/FH/Projekt 4.-5. Semester/ble/test/app/src/main/res/layout/device_button_control.xml" value="0.2957427536231884" />
+        <entry key="..\:/FH/Projekt 4.-5. Semester/ble/test/app/src/main/res/layout/device_controll.xml" value="0.2957427536231884" />
+        <entry key="app/src/main/res/drawable/ic_launcher_foreground.xml" value="0.30666666666666664" />
+        <entry key="app/src/main/res/layout/actionbar_indeterminate_progress.xml" value="0.19791666666666666" />
+        <entry key="app/src/main/res/layout/activity_main.xml" value="0.18885869565217392" />
+        <entry key="app/src/main/res/layout/button_control.xml" value="0.18885869565217392" />
+        <entry key="app/src/main/res/layout/device_button_control.xml" value="0.25" />
+        <entry key="app/src/main/res/layout/device_controll.xml" value="0.21739130434782608" />
+        <entry key="app/src/main/res/layout/gatt_services_characteristics.xml" value="0.18885869565217392" />
+        <entry key="app/src/main/res/layout/listitem_device.xml" value="0.25" />
+        <entry key="app/src/main/res/menu/gatt_services.xml" value="0.24635416666666668" />
+        <entry key="app/src/main/res/menu/main.xml" value="0.16770833333333332" />
+        <entry key="app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml" value="0.3148148148148148" />
+      </map>
+    </option>
+  </component>
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_11" default="true" project-jdk-name="Android Studio default JDK" project-jdk-type="JavaSDK">
+    <output url="file://$PROJECT_DIR$/build/classes" />
+  </component>
+  <component name="ProjectType">
+    <option name="id" value="Android" />
+  </component>
+</project>
