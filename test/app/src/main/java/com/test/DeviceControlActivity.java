@@ -13,6 +13,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.widget.Toast;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -103,11 +104,15 @@ public class DeviceControlActivity extends Activity {
         @Override
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
+            if (BluetoothLeService.ACTION_TRANSFER_FAILED.equals(action)) {
+                Toast.makeText(DeviceControlActivity.this, "Bluetooth-Übertragung abgebrochen. Verbindung und Kopplung prüfen.", Toast.LENGTH_LONG).show();
+            }
             if (BluetoothLeService.ACTION_GATT_CONNECTED.equals(action)) {
                 mConnected = true;
                 updateConnectionState(R.string.connected);
                 invalidateOptionsMenu();
             } else if (BluetoothLeService.ACTION_GATT_DISCONNECTED.equals(action)) {
+                myTimeCharacteristic = null; myPushCharacteristic = null;
                 mConnected = false;
                 updateConnectionState(R.string.disconnected);
                 invalidateOptionsMenu();
@@ -115,6 +120,7 @@ public class DeviceControlActivity extends Activity {
             } else if (BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {
                 // Show all the supported services and characteristics on the user interface.
                 displayGattServices(mBluetoothLeService.getSupportedGattServices());
+                tempTime = "------";
             } else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
                 System.out.println(BluetoothLeService.EXTRA_DATA.getClass().getName()+"");
                 displayData(intent.getStringExtra(BluetoothLeService.EXTRA_DATA));
@@ -364,6 +370,7 @@ public class DeviceControlActivity extends Activity {
         intentFilter.addAction(BluetoothLeService.ACTION_GATT_DISCONNECTED);
         intentFilter.addAction(BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED);
         intentFilter.addAction(BluetoothLeService.ACTION_DATA_AVAILABLE);
+        intentFilter.addAction(BluetoothLeService.ACTION_TRANSFER_FAILED);
         return intentFilter;
     }
 
@@ -374,13 +381,13 @@ public class DeviceControlActivity extends Activity {
 
 
             //Create Time String
-            String currentTime = new SimpleDateFormat("HHmmss", Locale.getDefault()).format(new Date());
+            String currentTime = new SimpleDateFormat("HHmmss", Locale.US).format(new Date());
             //Create Date String
-            String currentDate = new SimpleDateFormat("ddMMyyyy", Locale.getDefault()).format(new Date());
+            String currentDate = new SimpleDateFormat("ddMMyyyy", Locale.US).format(new Date());
 
-            String sendStringTimeDate = currentTime.substring(0,4) + currentDate.substring(0,4);
+            String sendStringTimeDate = currentTime.substring(0,4) + currentDate;
             if(myTimeCharacteristic != null && mConnected) {
-                if(tempTime.charAt(5) == '5' || tempTime.charAt(5) == '0') {
+                if(!currentTime.substring(0,4).equals(tempTime.substring(0,4))) {
                     writeTimeCharacteristic(myTimeCharacteristic, sendStringTimeDate);
                 }
             }
@@ -393,64 +400,13 @@ public class DeviceControlActivity extends Activity {
         }
     };
 
-    public boolean writeCharacteristic(BluetoothGattCharacteristic charac, String value){
-
-        //check mBluetoothGatt is available
-        BluetoothGatt mBluetoothGatt = mBluetoothLeService.getmBluetoothGatt();
-        if (mBluetoothGatt == null) {
-            Log.e(TAG, "lost connection");
-            return false;
-        }
-
-        if (charac == null) {
-            Log.e(TAG, "char not found!");
-            return false;
-        }
-
-        byte[] byteString = value.getBytes(StandardCharsets.UTF_8);
-
-        if(byteString.length<19) {
-            byte[] tempStringByte = new byte[byteString.length+2];
-            System.arraycopy(byteString, 0, tempStringByte, 2, byteString.length);
-            tempStringByte[0] = 0x00;
-            tempStringByte[1] = 0x01;
-            charac.setValue(tempStringByte);
-            return mBluetoothGatt.writeCharacteristic(charac);
-        } else {
-            byte[][] splitData = ArrayChunk(byteString, 18);
-            boolean success = false;
-            for(int i=0;i<splitData.length;i++) {
-                byte[] tempStringByte = new byte[20];
-                System.arraycopy(splitData[i], 0, tempStringByte, 2, splitData[i].length);
-                tempStringByte[0] = (byte) i;
-                tempStringByte[1] = (byte) splitData.length;
-                success = false;
-                charac.setValue(tempStringByte);
-                while(!success) {
-                    success = mBluetoothGatt.writeCharacteristic(charac);
-                }
-
-            }
-            return success;
-        }
+    public boolean writeCharacteristic(BluetoothGattCharacteristic characteristic, String value) {
+        return mBluetoothLeService != null &&
+            mBluetoothLeService.enqueuePackets(characteristic, SmartglassesProtocol.frames(value));
     }
-
-    public boolean writeTimeCharacteristic(BluetoothGattCharacteristic charac, String value){
-
-        //check mBluetoothGatt is available
-        BluetoothGatt mBluetoothGatt = mBluetoothLeService.getmBluetoothGatt();
-        if (mBluetoothGatt == null) {
-            Log.e(TAG, "lost connection");
-            return false;
-        }
-
-        if (charac == null) {
-            Log.e(TAG, "char not found!");
-            return false;
-        }
-
-        charac.setValue(value);
-        return mBluetoothGatt.writeCharacteristic(charac);
+    public boolean writeTimeCharacteristic(BluetoothGattCharacteristic characteristic, String value) {
+        return mBluetoothLeService != null && mBluetoothLeService.enqueuePackets(characteristic,
+            java.util.Collections.singletonList(value.getBytes(StandardCharsets.US_ASCII)));
     }
 
     public static byte[][] ArrayChunk(byte[] array, int chunkSize) {
@@ -474,7 +430,7 @@ public class DeviceControlActivity extends Activity {
         @Override
         public void onReceive(Context context, Intent notifyIntent) {
             notifyInfoText = notifyIntent.getStringExtra("Notification Info");
-            writeCharacteristic(myPushCharacteristic, notifyInfoText.substring(0, Math.min(notifyInfoText.length(), 60)));
+            writeCharacteristic(myPushCharacteristic, notifyInfoText);
         }
     }
 

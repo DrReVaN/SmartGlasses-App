@@ -1,0 +1,5 @@
+/build/
+/test/.gradle/
+/test/local.properties
+/test/app/build/
+*.class
