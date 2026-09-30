@@ -73,6 +73,9 @@
     <string name="verifying">Firmware wird geprüft und neu gestartet …</string>
     <string name="verifying_help">Die Brille prüft das vollständige Image. Danach wird die neue Firmware erneut gelesen.</string>
     <string name="update_interrupted">Update unterbrochen. Nach Wiederverbindung das vollständige Paket erneut starten.</string>
+    <string name="update_failed_begin">Der Update-Start wurde nicht bestätigt. Es wurden noch keine Firmwaredaten übertragen. Erneut verbinden; bei wiederholtem Fehler den Bootloader per Kabel prüfen.</string>
+    <string name="update_failed_transfer">Update unterbrochen. Bestätigte Daten: %1$d/%2$d B. Nach Wiederverbindung das vollständige Paket erneut starten.</string>
+    <string name="update_failed_commit">Alle Firmwaredaten wurden übertragen, aber die Abschlussprüfung wurde nicht bestätigt. Erneut verbinden und den Brillenstatus prüfen.</string>
     <string name="update_success">Update abgeschlossen. Prüfsumme von der Brille bestätigt und Anwendung nach Neustart wieder verbunden.</string>
     <string name="update_verify_failed">Die Brille ist nach dem Update im Bootloader geblieben. Update erneut starten oder per Kabel prüfen.</string>
     <string name="update_reconnect_failed">Der Update-Abschluss konnte nicht geprüft werden. Brille aufwecken und erneut verbinden; bei Wiederherstellungsmodus das vollständige Paket erneut übertragen.</string>

@@ -49,10 +49,13 @@ public class OtaLifecycleTest {
         @Implementation protected void disconnect() { }
         @Implementation protected void close() { closed=true; }
         void acknowledge() {
+            acknowledge(BluetoothGatt.GATT_SUCCESS);
+        }
+        void acknowledge(int status) {
             BluetoothGattCharacteristic c=pending; assertNotNull(c); pending=null;
-            if (reading && android.os.Build.VERSION.SDK_INT>=33) getGattCallback().onCharacteristicRead(real,c,c.getValue(),BluetoothGatt.GATT_SUCCESS);
-            else if (reading) getGattCallback().onCharacteristicRead(real,c,BluetoothGatt.GATT_SUCCESS);
-            else getGattCallback().onCharacteristicWrite(real,c,BluetoothGatt.GATT_SUCCESS);
+            if (reading && android.os.Build.VERSION.SDK_INT>=33) getGattCallback().onCharacteristicRead(real,c,c.getValue(),status);
+            else if (reading) getGattCallback().onCharacteristicRead(real,c,status);
+            else getGattCallback().onCharacteristicWrite(real,c,status);
             Shadows.shadowOf(Looper.getMainLooper()).idle();
         }
     }
@@ -135,6 +138,38 @@ public class OtaLifecycleTest {
         assertFalse(radio.closed); assertTrue(service.updating());
         radio.acknowledge(); assertEquals(GlassesProfile.DATA,radio.pending.getUuid());
     }
+    private void reconnectBootloader() {
+        attach(1); callback.onServicesDiscovered(gatt,BluetoothGatt.GATT_SUCCESS);
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); radio.acknowledge();
+        assertEquals(BluetoothLeService.State.BOOTLOADER,service.state());
+        assertNull(radio.pending); assertEquals(0,radio.writes);
+    }
+    @Test public void rejectedBeginSurvivesReconnectAndDiagnosticsUntilExplicitRetry() {
+        assertTrue(service.beginUpdate()); radio.acknowledge(BluetoothGatt.GATT_FAILURE);
+        String failed=service.getString(R.string.update_failed_begin);
+        assertFalse(service.updating()); assertEquals(0,service.progress()); assertEquals(failed,service.detail());
+        reconnectBootloader(); assertEquals(failed,service.detail());
+        service.readDiagnostics(); radio.acknowledge();
+        assertEquals(failed+"\n"+service.getString(R.string.diagnostics,0L,0L,0L,0L,0L),service.detail());
+        assertEquals(0,radio.writes); assertTrue(service.beginUpdate());
+        assertEquals(GlassesProfile.BEGIN,radio.pending.getUuid());
+        assertEquals(service.getString(R.string.keep_power),service.detail());
+    }
+    @Test public void interruptedDataRetainsAcknowledgedByteCount() {
+        assertTrue(service.beginUpdate()); radio.acknowledge(); radio.acknowledge(); lose();
+        String failed=service.getString(R.string.update_failed_transfer,16,image.size());
+        assertEquals(failed,service.detail()); reconnectBootloader(); assertEquals(failed,service.detail());
+        service.readDiagnostics(); radio.acknowledge(); assertTrue(service.detail().startsWith(failed+"\n"));
+    }
+    @Test public void rejectedCommitKeepsFailureAtOneHundredPercent() {
+        assertTrue(service.beginUpdate()); radio.acknowledge();
+        while (radio.pending.getUuid().equals(GlassesProfile.DATA)) radio.acknowledge();
+        assertEquals(GlassesProfile.END,radio.pending.getUuid()); radio.acknowledge(BluetoothGatt.GATT_FAILURE);
+        String failed=service.getString(R.string.update_failed_commit);
+        assertEquals(100,service.progress()); assertFalse(service.updating()); assertEquals(failed,service.detail());
+        reconnectBootloader(); assertEquals(failed,service.detail());
+        service.readDiagnostics(); radio.acknowledge(); assertTrue(service.detail().startsWith(failed+"\n"));
+    }
     @Test public void recoveryModeAllowsReadingRetainedFaultDiagnostics() {
         byte[] diagnostic=ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN)
             .putInt(0x20000000).putInt(2).putInt(3).putInt(4).putInt(5).array();
@@ -164,6 +199,8 @@ public class OtaLifecycleTest {
         assertFalse(service.updating());
         assertEquals(service.getString(R.string.update_verify_failed),service.detail());
         assertTrue(service.canReadDiagnostics());
+        service.readDiagnostics(); radio.acknowledge();
+        assertTrue(service.detail().startsWith(service.getString(R.string.update_verify_failed)+"\n"));
     }
     @Test public void cancellationDiscardsOutstandingWrites() {
         assertTrue(service.beginUpdate()); radio.acknowledge(); ControlledGatt old=radio;

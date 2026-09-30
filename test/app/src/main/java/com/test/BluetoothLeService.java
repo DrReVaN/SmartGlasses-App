@@ -44,6 +44,8 @@ public class BluetoothLeService extends Service {
     private byte[] version;
     private OtaImage image;
     private boolean updating, controlSent, committing, awaitingVerification, loading;
+    private boolean beginAccepted;
+    private String updateFailure="";
     private int otaOffset;
     private long lastPublished;
     private PowerManager.WakeLock updateWake;
@@ -113,7 +115,7 @@ public class BluetoothLeService extends Service {
         }
         if (intent==null && !prefs.getBoolean("connection_enabled",false)) { stopSelf(); return START_NOT_STICKY; }
         boolean same=desired && next.equals(address) && gatt!=null;
-        if (!same) { desired=false; closeGatt(); outbox.clear(); messageInFlight=false; sending=null; cancelUpdate(); address=next; retries=0; }
+        if (!same) { desired=false; closeGatt(); outbox.clear(); messageInFlight=false; sending=null; cancelUpdate(); if (!next.equals(address)) updateFailure=""; address=next; retries=0; }
         desired=true; prefs.edit().putString(ADDRESS,address).putBoolean("connection_enabled",true).apply();
         if (!promote()) return START_NOT_STICKY;
         if (!same) connect();
@@ -198,7 +200,10 @@ public class BluetoothLeService extends Service {
     private void lost(String why) {
         if (messageInFlight) { outbox.failed(sending); messageInFlight=false; sending=null; }
         if (updating && committing) {
-            updating=false; committing=false; controlSent=false; releaseWake(); why=getString(R.string.update_interrupted);
+            if (!beginAccepted) updateFailure=getString(R.string.update_failed_begin);
+            else if (state==State.VERIFYING) updateFailure=getString(R.string.update_failed_commit);
+            else updateFailure=getString(R.string.update_failed_transfer,otaOffset,image.size());
+            updating=false; committing=false; controlSent=false; releaseWake(); why=updateFailure;
         }
         closeGatt(); setState(State.ERROR,why);
         if (!desired) return;
@@ -206,7 +211,8 @@ public class BluetoothLeService extends Service {
             // Never leave the UI locked if the post-update reconnect cannot complete.
             boolean updatePending=updating() || state==State.VERIFYING;
             updating=false; committing=false; controlSent=false; awaitingVerification=false; releaseWake();
-            detail=getString(updatePending ? R.string.update_reconnect_failed : R.string.retry_exhausted); publish(); return;
+            if (updatePending) updateFailure=getString(R.string.update_reconnect_failed);
+            detail=updateFailure.isEmpty() ? getString(R.string.retry_exhausted) : updateFailure; publish(); return;
         }
         long delay=Math.min(30000,1000L << Math.min(retries-1,5));
         int token=connectionToken;
@@ -285,6 +291,7 @@ public class BluetoothLeService extends Service {
                     else if (uuid.equals(GlassesProfile.DIAGNOSTICS) && data!=null && data.length==20) {
                         java.nio.ByteBuffer b=java.nio.ByteBuffer.wrap(data).order(java.nio.ByteOrder.LITTLE_ENDIAN);
                         detail=getString(R.string.diagnostics,b.getInt() & 0xffffffffL,b.getInt() & 0xffffffffL,b.getInt() & 0xffffffffL,b.getInt() & 0xffffffffL,b.getInt() & 0xffffffffL);
+                        if (!updateFailure.isEmpty()) detail=updateFailure+"\n"+detail;
                     }
                 }
                 queue.complete(uuid,status==BluetoothGatt.GATT_SUCCESS); publish();
@@ -303,11 +310,15 @@ public class BluetoothLeService extends Service {
         if (!GlassesProfile.supportedVersion(version)) { terminal(getString(R.string.unsupported_version)); return; }
         retries=0;
         if (version[3]==1) {
-            if (awaitingVerification) { awaitingVerification=false; setState(State.BOOTLOADER,getString(R.string.update_verify_failed)); return; }
-            if (updating) startUpload(); else setState(State.BOOTLOADER,getString(R.string.bootloader_help));
+            if (awaitingVerification) {
+                awaitingVerification=false; updateFailure=getString(R.string.update_verify_failed);
+                setState(State.BOOTLOADER,updateFailure); return;
+            }
+            if (updating) startUpload(); else setState(State.BOOTLOADER,updateFailure.isEmpty() ? getString(R.string.bootloader_help) : updateFailure);
         } else {
-            if (awaitingVerification) { awaitingVerification=false; updating=false; committing=false; detail=getString(R.string.update_success); }
+            if (awaitingVerification) { awaitingVerification=false; updating=false; committing=false; updateFailure=""; detail=getString(R.string.update_success); }
             else if (updating && controlSent) { terminal(getString(R.string.update_mode_failed)); return; }
+            else if (!updateFailure.isEmpty()) detail=updateFailure;
             setState(State.READY,detail);
             if (queue.idle()) operation(GlassesProfile.NAME,null,5000,this::pump);
             pump();
@@ -371,7 +382,7 @@ public class BluetoothLeService extends Service {
     }
     public boolean beginUpdate() {
         if (image==null || updating() || !(state==State.READY || state==State.BOOTLOADER)) return false;
-        updating=true; controlSent=false; committing=false; awaitingVerification=false; progress=0;
+        updating=true; controlSent=false; committing=false; awaitingVerification=false; beginAccepted=false; updateFailure=""; progress=0;
         // Finish an already accepted ATT batch, but do not start another normal message.
         outbox.discardWaiting(); setState(State.UPDATE_WAIT,getString(R.string.update_wait_help)); pump();
         return true;
@@ -388,7 +399,7 @@ public class BluetoothLeService extends Service {
         PowerManager power=(PowerManager)getSystemService(POWER_SERVICE);
         updateWake=power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,getPackageName()+":ota"); updateWake.acquire(900000);
         committing=true; controlSent=true; otaOffset=0; setState(State.UPLOADING,getString(R.string.keep_power));
-        if (!operation(GlassesProfile.BEGIN,image.begin(),15000,this::chunk)) lost(getString(R.string.update_interrupted));
+        if (!operation(GlassesProfile.BEGIN,image.begin(),15000,() -> { beginAccepted=true; chunk(); })) lost(getString(R.string.update_interrupted));
     }
     private void chunk() {
         if (!updating || image==null) return;
