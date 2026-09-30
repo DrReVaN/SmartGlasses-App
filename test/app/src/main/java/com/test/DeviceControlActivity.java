@@ -118,7 +118,8 @@ public class DeviceControlActivity extends Activity implements BluetoothLeServic
         detail.setText(service==null ? getString(R.string.controls_help) : service.detail());
         statistics.setText(service==null ? getString(R.string.empty_text) : getString(R.string.message_statistics,service.sent(),service.pending(),service.dropped()));
         listener.setText(NotifyListenerService.connected ? R.string.listener_ready : R.string.listener_missing);
-        send.setEnabled(ready && !updating); diagnostics.setEnabled(ready && !updating);
+        send.setEnabled(ready && !updating);
+        diagnostics.setEnabled(service!=null && service.canReadDiagnostics());
         select.setEnabled(service!=null && !updating && !service.loading());
         startUpdate.setEnabled((ready || boot) && !updating && service.image()!=null);
         cancelUpdate.setEnabled(service!=null && service.canCancelUpdate());

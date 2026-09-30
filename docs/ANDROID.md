@@ -18,6 +18,8 @@ The old hard-coded RSSI trilateration, recurring bitmap allocation and unused de
 
 ## OTA from Android
 
+Version 1.1.1 also enables **Brillenstatus lesen** in recovery mode. Read the retained reset flags and fault number before power-cycling glasses that remain in the bootloader after OTA. This operation reads the protected diagnostic characteristic without writing flash or requesting a reset. It is unavailable during upload/post-update verification and while another ATT operation is queued.
+
 The custom CPU1 OTA bootloader must first be installed together with the application by ST-Link, following the firmware repository's `docs/OTA.md`. The original firmware alone cannot receive this update. OTA never installs the bootloader, CPU2 BLE stack or FUS.
 
 1. Build and package the firmware. Copy the matching `build/application/smartglasses.bin` and `smartglasses.json` to the phone or an accessible document provider.

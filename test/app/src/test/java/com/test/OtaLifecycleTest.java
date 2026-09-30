@@ -135,6 +135,36 @@ public class OtaLifecycleTest {
         assertFalse(radio.closed); assertTrue(service.updating());
         radio.acknowledge(); assertEquals(GlassesProfile.DATA,radio.pending.getUuid());
     }
+    @Test public void recoveryModeAllowsReadingRetainedFaultDiagnostics() {
+        byte[] diagnostic=ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(0x20000000).putInt(2).putInt(3).putInt(4).putInt(5).array();
+        radio.services.get(GlassesProfile.INFO).getCharacteristic(GlassesProfile.DIAGNOSTICS).setValue(diagnostic);
+        assertTrue(service.canReadDiagnostics());
+        service.readDiagnostics();
+        assertEquals(GlassesProfile.DIAGNOSTICS,radio.pending.getUuid());
+        assertEquals(0,radio.writes);
+        assertFalse(service.canReadDiagnostics());
+        radio.acknowledge();
+        assertEquals(BluetoothLeService.State.BOOTLOADER,service.state());
+        assertEquals(service.getString(R.string.diagnostics,0x20000000L,2,3,4,5),service.detail());
+        assertTrue(service.canReadDiagnostics());
+    }
+    @Test public void diagnosticsCannotInterleaveAnUpdate() {
+        assertTrue(service.beginUpdate());
+        assertFalse(service.canReadDiagnostics());
+        service.readDiagnostics();
+        assertEquals(GlassesProfile.BEGIN,radio.pending.getUuid());
+        assertEquals(0,radio.reads);
+    }
+    @Test public void bootloaderAfterCommitDoesNotReportUpdateSuccess() {
+        ReflectionHelpers.setField(service,"awaitingVerification",true);
+        callback.onServicesDiscovered(gatt,BluetoothGatt.GATT_SUCCESS);
+        Shadows.shadowOf(Looper.getMainLooper()).idle(); radio.acknowledge();
+        assertEquals(BluetoothLeService.State.BOOTLOADER,service.state());
+        assertFalse(service.updating());
+        assertEquals(service.getString(R.string.update_verify_failed),service.detail());
+        assertTrue(service.canReadDiagnostics());
+    }
     @Test public void cancellationDiscardsOutstandingWrites() {
         assertTrue(service.beginUpdate()); radio.acknowledge(); ControlledGatt old=radio;
         ReflectionHelpers.setField(service,"desired",false); service.cancelUpdate();

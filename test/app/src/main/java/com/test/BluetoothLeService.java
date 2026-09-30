@@ -78,6 +78,9 @@ public class BluetoothLeService extends Service {
     public int sent() { return sent; }
     public int progress() { return progress; }
     public boolean updating() { return updating || awaitingVerification; }
+    public boolean canReadDiagnostics() {
+        return (state==State.READY || state==State.BOOTLOADER) && !updating() && queue.idle();
+    }
     public boolean canCancelUpdate() { return updating && state!=State.VERIFYING; }
     public boolean loading() { return loading; }
     public OtaImage image() { return image; }
@@ -337,8 +340,9 @@ public class BluetoothLeService extends Service {
         if (!queue.enqueue(batch)) { messageInFlight=false; sending=null; outbox.failed(message); publish(); }
     }
     public void readDiagnostics() {
-        if (state==State.READY && !updating() && queue.idle()) {
+        if (canReadDiagnostics()) {
             if (!operation(GlassesProfile.DIAGNOSTICS,null,5000,this::pump)) { detail=getString(R.string.transfer_failed); publish(); }
+            else publish();
         }
     }
     public void loadPackage(Uri binary,Uri manifest) {
