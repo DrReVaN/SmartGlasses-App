@@ -66,6 +66,7 @@ public class OtaLifecycleTest {
     private BluetoothGattCallback callback;
     private OtaImage image;
     @Before public void create() {
+        RuntimeEnvironment.getApplication().getSharedPreferences("glasses",0).edit().putLong("firmware_check",System.currentTimeMillis()).apply();
         Shadows.shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.BLUETOOTH_CONNECT,Manifest.permission.BLUETOOTH_SCAN);
         controller=Robolectric.buildService(BluetoothLeService.class).create(); service=controller.get();
         byte[] data=new byte[0x151]; Arrays.fill(data,(byte)0x55);
@@ -120,7 +121,7 @@ public class OtaLifecycleTest {
         callback.onServicesDiscovered(gatt,BluetoothGatt.GATT_SUCCESS); Shadows.shadowOf(Looper.getMainLooper()).idle();
         assertEquals(GlassesProfile.VERSION,radio.pending.getUuid()); radio.acknowledge();
         assertFalse(service.updating()); assertEquals(BluetoothLeService.State.READY,service.state());
-        assertEquals(service.getString(R.string.update_success),service.detail());
+        assertEquals(service.getString(R.string.update_success_legacy),service.detail());
     }
     @Test public void interruptedTransferClosesGattAndNeedsExplicitRestart() {
         assertTrue(service.beginUpdate()); radio.acknowledge();
@@ -207,6 +208,30 @@ public class OtaLifecycleTest {
         ReflectionHelpers.setField(service,"desired",false); service.cancelUpdate();
         assertTrue(old.closed); assertFalse(service.updating()); old.acknowledge();
         assertEquals(0,service.progress()); assertEquals(2,old.writes);
+    }
+    private void identifiedReconnect(int patch,boolean badCRC) {
+        byte[] data=new byte[512]; ByteBuffer b=ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+        b.putInt(0x20007800).putInt(0x0801014d); b.position(0x140);
+        b.putInt(0x31564753).putShort((short)0).putShort((short)3).putShort((short)0).put((byte)1).put((byte)0);
+        CRC32 crc=new CRC32(); crc.update(data);
+        image=new OtaImage(data,1,"STM32WB35CE","application",OtaImage.ADDRESS,data.length,crc.getValue(),OtaImage.hash(data),"0.3.0");
+        ReflectionHelpers.setField(service,"image",image); ReflectionHelpers.setField(service,"awaitingVerification",true);
+        attach(0);
+        byte[] identity=ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN).put(new byte[]{0,2,0,0})
+            .putShort((short)0).putShort((short)3).putShort((short)patch).put((byte)1).put((byte)0)
+            .putInt(image.size()).putInt((int)(image.crc32+(badCRC ? 1 : 0))).array();
+        radio.services.get(GlassesProfile.INFO).getCharacteristic(GlassesProfile.VERSION).setValue(identity);
+        callback.onServicesDiscovered(gatt,BluetoothGatt.GATT_SUCCESS); Shadows.shadowOf(Looper.getMainLooper()).idle(); radio.acknowledge();
+    }
+    @Test public void reportedVersionAndChecksumConfirmTheSelectedImage() {
+        identifiedReconnect(0,false); assertEquals(service.getString(R.string.update_success),service.detail());
+        assertEquals("0.3.0",service.installedLabel()); assertFalse(service.updating());
+    }
+    @Test public void differentRunningVersionNeverReportsSuccess() {
+        identifiedReconnect(1,false); assertTrue(service.detail().startsWith("Update nicht bestätigt")); assertFalse(service.updating());
+    }
+    @Test public void matchingVersionWithDifferentChecksumNeverReportsSuccess() {
+        identifiedReconnect(0,true); assertTrue(service.detail().startsWith("Update nicht bestätigt")); assertFalse(service.updating());
     }
     @Test public void exhaustedPostUpdateReconnectUnlocksManualRetry() {
         ReflectionHelpers.setField(service,"awaitingVerification",true);

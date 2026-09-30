@@ -15,6 +15,7 @@ import android.os.*;
 import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -42,6 +43,19 @@ public class BluetoothLeService extends Service {
     private int retries, connectionToken, sent, progress, packageGeneration;
     private MessageOutbox.Message sending;
     private byte[] version;
+    private FirmwareVersion installedRelease;
+    private String installedLabel="Noch nicht gelesen";
+    private FirmwareRepository repository;
+    private List<FirmwareRelease> catalog=Collections.emptyList();
+    private String catalogStatus="";
+    private boolean catalogBusy;
+    private static final long CHECK_INTERVAL=6*60*60*1000L;
+    private final Runnable catalogTick=new Runnable() {
+        @Override public void run() {
+            if(destroyed) return;
+            checkFirmware(false); main.postDelayed(this,CHECK_INTERVAL);
+        }
+    };
     private OtaImage image;
     private boolean updating, controlSent, committing, awaitingVerification, loading;
     private boolean beginAccepted;
@@ -86,6 +100,52 @@ public class BluetoothLeService extends Service {
     public boolean canCancelUpdate() { return updating && state!=State.VERIFYING; }
     public boolean loading() { return loading; }
     public OtaImage image() { return image; }
+    public FirmwareVersion installedRelease() { return installedRelease; }
+    public String installedLabel() { return installedLabel; }
+    public String catalogStatus() { return catalogStatus; }
+    public boolean catalogBusy() { return catalogBusy; }
+    public List<FirmwareRelease> catalog() { return catalog; }
+    public FirmwareRelease offeredRelease() {
+        FirmwareRelease next=FirmwareRelease.newest(catalog,installedRelease);
+        String deferred=getSharedPreferences("glasses",MODE_PRIVATE).getString("defer:"+address,"");
+        return next!=null && !next.version.toString().equals(deferred) ? next : null;
+    }
+    public void deferFirmware() {
+        FirmwareRelease next=offeredRelease();
+        if(next!=null) getSharedPreferences("glasses",MODE_PRIVATE).edit().putString("defer:"+address,next.version.toString()).apply();
+        publish();
+    }
+    public void checkFirmware(boolean manual) {
+        if(destroyed || repository==null || catalogBusy || loading || updating()) return;
+        if(!manual && !(state==State.READY || state==State.BOOTLOADER)) return;
+        long now=System.currentTimeMillis();
+        SharedPreferences prefs=getSharedPreferences("glasses",MODE_PRIVATE);
+        long last=prefs.getLong("firmware_check",0);
+        if(!manual && now>=last && now-last<CHECK_INTERVAL) return;
+        if(manual) prefs.edit().remove("defer:"+address).apply();
+        prefs.edit().putLong("firmware_check",now).apply();
+        catalogBusy=true; catalogStatus=getString(R.string.firmware_checking); publish();
+        files.execute(() -> {
+            try {
+                List<FirmwareRelease> loaded=repository.refresh();
+                main.post(() -> { if(!destroyed) { catalog=loaded; catalogBusy=false; catalogStatus=getString(R.string.firmware_checked); publish(); } });
+            } catch(Exception e) {
+                main.post(() -> { if(!destroyed) { catalogBusy=false; catalogStatus=getString(R.string.firmware_check_failed); publish(); } });
+            }
+        });
+    }
+    public void loadRelease(FirmwareRelease release) {
+        if(destroyed || loading || updating() || !catalog.contains(release)) return;
+        loading=true; image=null; int token=++packageGeneration; publish();
+        files.execute(() -> {
+            try {
+                OtaImage loaded=repository.load(release);
+                main.post(() -> { if(!destroyed && token==packageGeneration) { image=loaded; loading=false; detail=getString(R.string.package_valid,loaded.size(),loaded.version); publish(); } });
+            } catch(Exception e) {
+                main.post(() -> { if(!destroyed && token==packageGeneration) { loading=false; image=null; detail=getString(R.string.firmware_download_failed); publish(); } });
+            }
+        });
+    }
     public void clearImage() { if (!updating() && !loading) { ++packageGeneration; image=null; publish(); } }
     public void discardPending() { outbox.discardWaiting(); publish(); }
     public void addListener(Listener listener) { listeners.add(listener); listener.changed(); }
@@ -98,6 +158,12 @@ public class BluetoothLeService extends Service {
         super.onCreate(); active=this;
         BluetoothManager manager=(BluetoothManager)getSystemService(BLUETOOTH_SERVICE);
         adapter=manager==null ? null : manager.getAdapter();
+        repository=new FirmwareRepository(new File(getFilesDir(),"firmware"),new FirmwareRepository.HttpsTransport());
+        files.execute(() -> {
+            List<FirmwareRelease> cached=repository.cachedCatalog();
+            main.post(() -> { if(!destroyed && catalog.isEmpty()) { catalog=cached; publish(); } });
+        });
+        main.postDelayed(catalogTick,CHECK_INTERVAL);
         IntentFilter filter=new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
         filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
         // These are protected system actions; the Bluetooth process can use a different UID.
@@ -115,7 +181,7 @@ public class BluetoothLeService extends Service {
         }
         if (intent==null && !prefs.getBoolean("connection_enabled",false)) { stopSelf(); return START_NOT_STICKY; }
         boolean same=desired && next.equals(address) && gatt!=null;
-        if (!same) { desired=false; closeGatt(); outbox.clear(); messageInFlight=false; sending=null; cancelUpdate(); if (!next.equals(address)) updateFailure=""; address=next; retries=0; }
+        if (!same) { desired=false; closeGatt(); outbox.clear(); messageInFlight=false; sending=null; cancelUpdate(); if (!next.equals(address)) { updateFailure=""; installedRelease=null; installedLabel=getString(R.string.firmware_unread); } address=next; retries=0; }
         desired=true; prefs.edit().putString(ADDRESS,address).putBoolean("connection_enabled",true).apply();
         if (!promote()) return START_NOT_STICKY;
         if (!same) connect();
@@ -138,7 +204,9 @@ public class BluetoothLeService extends Service {
         Intent stop=new Intent(this,BluetoothLeService.class).setAction(ACTION_STOP);
         PendingIntent stopIntent=PendingIntent.getService(this,1,stop,PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder b=Build.VERSION.SDK_INT>=26 ? new Notification.Builder(this,"connection") : new Notification.Builder(this);
-        return b.setSmallIcon(R.drawable.ic_status).setContentTitle(getString(R.string.app_name)).setContentText(statusText())
+        FirmwareRelease next=offeredRelease();
+        String summary=next!=null && state==State.READY && !updating() ? getString(R.string.firmware_available,next.version.toString()) : statusText();
+        return b.setSmallIcon(R.drawable.ic_status).setContentTitle(getString(R.string.app_name)).setContentText(summary)
             .setContentIntent(content).setOngoing(true).setOnlyAlertOnce(true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel,getString(R.string.disconnect),stopIntent).build();
     }
@@ -308,6 +376,7 @@ public class BluetoothLeService extends Service {
     }
     private void versionRead() {
         if (!GlassesProfile.supportedVersion(version)) { terminal(getString(R.string.unsupported_version)); return; }
+        FirmwareIdentity identity=FirmwareIdentity.read(version);
         retries=0;
         if (version[3]==1) {
             if (awaitingVerification) {
@@ -315,13 +384,24 @@ public class BluetoothLeService extends Service {
                 setState(State.BOOTLOADER,updateFailure); return;
             }
             if (updating) startUpload(); else setState(State.BOOTLOADER,updateFailure.isEmpty() ? getString(R.string.bootloader_help) : updateFailure);
+            checkFirmware(false);
         } else {
-            if (awaitingVerification) { awaitingVerification=false; updating=false; committing=false; updateFailure=""; detail=getString(R.string.update_success); }
+            installedRelease=identity.version;
+            installedLabel=identity.version==null ? getString(R.string.firmware_legacy) : identity.version.toString();
+            if (awaitingVerification) {
+                awaitingVerification=false; updating=false; committing=false;
+                if(identity.confirms(image)) {
+                    updateFailure=""; detail=getString(identity.version==null ? R.string.update_success_legacy : R.string.update_success);
+                } else {
+                    updateFailure=getString(R.string.update_wrong_version,image==null ? "?" : image.version,installedLabel); detail=updateFailure;
+                }
+            }
             else if (updating && controlSent) { terminal(getString(R.string.update_mode_failed)); return; }
             else if (!updateFailure.isEmpty()) detail=updateFailure;
             setState(State.READY,detail);
             if (queue.idle()) operation(GlassesProfile.NAME,null,5000,this::pump);
             pump();
+            checkFirmware(false);
         }
     }
     public boolean sendText(String text) {
@@ -363,7 +443,7 @@ public class BluetoothLeService extends Service {
             try {
                 byte[] data=readLimited(binary,OtaImage.MAX_SIZE);
                 JSONObject m=new JSONObject(new String(readLimited(manifest,16384),StandardCharsets.UTF_8));
-                OtaImage loaded=new OtaImage(data,m.getInt("format"),m.getString("target"),m.getString("profile"),Long.decode(m.getString("address")),m.getInt("size"),Long.parseLong(m.getString("crc32"),16),m.getString("sha256"),m.getString("version"));
+                OtaImage loaded=OtaImage.fromManifest(data,m);
                 main.post(() -> { if (!destroyed && token==packageGeneration) { image=loaded; loading=false; detail=getString(R.string.package_valid,loaded.size(),loaded.version); publish(); } });
             } catch (Exception e) {
                 main.post(() -> { if (!destroyed && token==packageGeneration) { loading=false; image=null; detail=getString(R.string.package_invalid); publish(); } });

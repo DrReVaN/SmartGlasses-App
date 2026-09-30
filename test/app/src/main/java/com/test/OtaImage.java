@@ -13,6 +13,7 @@ public final class OtaImage {
     public static final int MAX_SIZE = 0x30000;
     private final byte[] image;
     private final long crc;
+    public final long crc32;
     public final String version;
     public final String sha256;
     public OtaImage(byte[] data, int format, String target, String profile, long address,
@@ -31,8 +32,32 @@ public final class OtaImage {
         if ((stack & 7) != 0 || stack <= 0x20000008L || stack > 0x20008000L
                 || (entry & 1) == 0 || (entry & ~1L) < ADDRESS || (entry & ~1L) >= ADDRESS+data.length)
             throw new IllegalArgumentException("Ungültiger Startvektor der Firmware.");
-        if (!"0.2.0".equals(version)) throw new IllegalArgumentException("Nicht unterstützte Firmwareversion.");
-        image = data.clone(); crc = check.getValue(); this.version = version; sha256 = hash;
+        FirmwareVersion release=FirmwareVersion.parse(version);
+        if(release.equals(FirmwareVersion.parse("0.2.0")) && data.length>=0x14c
+                && ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN).getInt(0x140)==0x31564753)
+            throw new IllegalArgumentException("Firmwareidentität darf nicht als Altstand deklariert werden.");
+        if(!release.equals(FirmwareVersion.parse("0.2.0"))) {
+            if(release.compareTo(FirmwareVersion.parse("0.3.0"))<0 || data.length<0x14c)
+                throw new IllegalArgumentException("Nicht unterstützte Firmwareversion.");
+            ByteBuffer identity=ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN); identity.position(0x140);
+            if(identity.getInt()!=0x31564753 || (identity.getShort() & 65535)!=release.major
+                    || (identity.getShort() & 65535)!=release.minor || (identity.getShort() & 65535)!=release.patch
+                    || identity.get()!=1 || identity.get()!=0)
+                throw new IllegalArgumentException("Versionsnummer passt nicht zur Firmwaredatei.");
+        }
+        image = data.clone(); crc = check.getValue(); crc32=crc; this.version = version; sha256 = hash;
+    }
+    public static OtaImage fromManifest(byte[] data,org.json.JSONObject m) throws org.json.JSONException {
+        String version=m.getString("version");
+        if(!version.equals("0.2.0") && (!m.has("protocol") || !m.has("min_bootloader")))
+            throw new IllegalArgumentException("Unvollständige Firmware-Kompatibilitätsangaben.");
+        Object protocol=m.has("protocol") ? m.get("protocol") : Integer.valueOf(1);
+        if(!(protocol instanceof Number) || ((Number)protocol).doubleValue()!=1 || FirmwareVersion.parse(m.has("min_bootloader") ? m.getString("min_bootloader") : "0.2.0")
+                .compareTo(FirmwareVersion.parse("0.2.0"))>0)
+            throw new IllegalArgumentException("Dieses Paket benötigt einen neueren Bootloader per Kabel.");
+        return new OtaImage(data,m.getInt("format"),m.getString("target"),m.getString("profile"),
+            Long.decode(m.getString("address")),m.getInt("size"),Long.parseLong(m.getString("crc32"),16),
+            m.getString("sha256"),version);
     }
     public int size() { return image.length; }
     public static String hash(byte[] data) {

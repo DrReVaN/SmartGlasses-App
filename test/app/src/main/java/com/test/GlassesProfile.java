@@ -20,7 +20,7 @@ public final class GlassesProfile {
     public static final UUID DATA = characteristic("0000fe22");
     public static final UUID END = characteristic("0000fe23");
     public static boolean supportedVersion(byte[] version) {
-        return version != null && version.length == 4 && version[0] == 0 && version[1] == 2
-            && version[2] == 0 && (version[3] == 0 || version[3] == 1);
+        try { FirmwareIdentity.read(version); return true; }
+        catch (IllegalArgumentException e) { return false; }
     }
 }

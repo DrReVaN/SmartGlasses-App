@@ -16,6 +16,8 @@ public class DeviceControlActivity extends Activity implements BluetoothLeServic
     private BluetoothLeService service;
     private boolean bound, autoConnect;
     private TextView status, detail, statistics, listener, packageInfo;
+    private TextView firmwareVersion, firmwareStatus, firmwareOffer;
+    private Button checkFirmware, versions, prepareNew, deferNew;
     private Button send, diagnostics, startUpdate, cancelUpdate, select, connect;
     private EditText text;
     private ProgressBar progress;
@@ -66,14 +68,18 @@ public class DeviceControlActivity extends Activity implements BluetoothLeServic
         diagnostics=Ui.button(this,root,R.string.read_diagnostics,v -> { if (service!=null) service.readDiagnostics(); });
         Ui.text(this,root,R.string.ota_heading);
         Ui.text(this,root,R.string.ota_help);
+        firmwareVersion=Ui.text(this,root,R.string.firmware_unread);
+        firmwareStatus=Ui.text(this,root,R.string.empty_text);
+        firmwareOffer=Ui.text(this,root,R.string.empty_text);
+        prepareNew=Ui.button(this,root,R.string.firmware_prepare,v -> {
+            if(service!=null && service.offeredRelease()!=null) prepareRelease(service.offeredRelease());
+        });
+        deferNew=Ui.button(this,root,R.string.firmware_later,v -> { if(service!=null) service.deferFirmware(); });
+        checkFirmware=Ui.button(this,root,R.string.firmware_check,v -> { if(service!=null) service.checkFirmware(true); });
+        versions=Ui.button(this,root,R.string.firmware_versions,v -> chooseVersion());
         packageInfo=Ui.text(this,root,R.string.package_missing);
         select=Ui.button(this,root,R.string.select_firmware,v -> chooseFile(BINARY));
-        startUpdate=Ui.button(this,root,R.string.start_update,v -> new AlertDialog.Builder(this)
-            .setTitle(R.string.ota_heading).setMessage(R.string.update_confirmation)
-            .setNegativeButton(android.R.string.cancel,null)
-            .setPositiveButton(R.string.start_update,(dialog,which) -> {
-                if (service==null || !service.beginUpdate()) Toast.makeText(this,R.string.message_rejected,Toast.LENGTH_SHORT).show();
-            }).show());
+        startUpdate=Ui.button(this,root,R.string.start_update,v -> confirmUpdate());
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal); progress.setMax(100); root.addView(progress);
         cancelUpdate=Ui.button(this,root,R.string.cancel_update,v -> { if (service!=null) service.cancelUpdate(); });
         changed();
@@ -123,11 +129,53 @@ public class DeviceControlActivity extends Activity implements BluetoothLeServic
         select.setEnabled(service!=null && !updating && !service.loading());
         startUpdate.setEnabled((ready || boot) && !updating && service.image()!=null);
         cancelUpdate.setEnabled(service!=null && service.canCancelUpdate());
+        firmwareVersion.setText(getString(R.string.firmware_installed,service==null ? getString(R.string.firmware_unread) : service.installedLabel()));
+        firmwareStatus.setText(service==null ? "" : service.catalogStatus());
+        FirmwareRelease offered=service==null ? null : service.offeredRelease();
+        firmwareOffer.setText(offered==null ? "" : getString(R.string.firmware_available,offered.version.toString())
+            +(offered.development ? " · "+getString(R.string.firmware_development) : ""));
+        prepareNew.setVisibility(offered==null ? android.view.View.GONE : android.view.View.VISIBLE);
+        deferNew.setVisibility(offered==null ? android.view.View.GONE : android.view.View.VISIBLE);
+        prepareNew.setEnabled(service!=null && !updating && !service.loading());
+        deferNew.setEnabled(!updating);
+        checkFirmware.setEnabled(service!=null && !updating && !service.loading() && !service.catalogBusy());
+        versions.setEnabled(service!=null && !service.catalog().isEmpty() && !updating && !service.loading());
         progress.setProgress(service==null ? 0 : service.progress());
         if (service!=null && service.loading()) packageInfo.setText(R.string.package_loading);
         else if (service!=null && service.image()!=null) packageInfo.setText(getString(R.string.package_valid,service.image().size(),service.image().version));
         else packageInfo.setText(R.string.package_missing);
         connect.setEnabled(!updating);
+    }
+    private void chooseVersion() {
+        if(service==null) return;
+        List<FirmwareRelease> available=new ArrayList<>(service.catalog());
+        String[] labels=new String[available.size()]; FirmwareVersion installed=service.installedRelease();
+        for(int i=0;i<labels.length;i++) {
+            FirmwareRelease release=available.get(i);
+            int relation=installed==null ? 1 : release.version.compareTo(installed);
+            labels[i]=release.version+" · "+getString(relation<0 ? R.string.firmware_older : relation==0 ? R.string.firmware_current : R.string.firmware_newer)
+                +(release.development ? " · "+getString(R.string.firmware_development) : "");
+        }
+        new AlertDialog.Builder(this).setTitle(R.string.firmware_versions).setItems(labels,(dialog,which) -> prepareRelease(available.get(which)))
+            .setNegativeButton(android.R.string.cancel,null).show();
+    }
+    private void prepareRelease(FirmwareRelease release) {
+        new AlertDialog.Builder(this).setTitle(getString(R.string.firmware_target,release.version.toString()))
+            .setMessage(R.string.firmware_prepare_help).setNegativeButton(android.R.string.cancel,null)
+            .setPositiveButton(R.string.firmware_download,(dialog,which) -> { if(service!=null) service.loadRelease(release); }).show();
+    }
+    private void confirmUpdate() {
+        if(service==null || service.image()==null) return;
+        OtaImage selected=service.image(); String targetAddress=service.address();
+        FirmwareVersion current=service.installedRelease();
+        boolean downgrade=current!=null && FirmwareVersion.parse(selected.version).compareTo(current)<0;
+        String action=getString(downgrade ? R.string.firmware_downgrade : R.string.firmware_target,selected.version);
+        new AlertDialog.Builder(this).setTitle(action).setMessage(getString(R.string.update_confirmation))
+            .setNegativeButton(android.R.string.cancel,null)
+            .setPositiveButton(R.string.start_update,(dialog,which) -> {
+                if(service==null || service.image()!=selected || !Objects.equals(service.address(),targetAddress) || !service.beginUpdate())
+                    Toast.makeText(this,R.string.message_rejected,Toast.LENGTH_SHORT).show();
+            }).show();
     }
     private void chooseFile(int request) {
         Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);
