@@ -10,7 +10,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - name: Test protocol and GATT queue
         run: |
           mkdir -p build/tests
@@ -20,7 +23,14 @@ jobs:
         working-directory: test
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest assembleDebug --no-daemon
+          ./gradlew testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-test-and-lint-results
+          path: |
+            test/app/build/reports/
+            test/app/build/test-results/
       - uses: actions/upload-artifact@v4
         with:
           name: smartglasses-app-debug

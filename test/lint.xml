@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- The SDK-36-compatible AGP/Gradle pair is pinned for reproducible builds.
+         Keep release-currency notices visible without making network metadata a build gate. -->
+    <issue id="AndroidGradlePluginVersion" severity="informational" />
+</lint>

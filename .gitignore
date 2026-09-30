@@ -3,3 +3,5 @@
 /test/local.properties
 /test/app/build/
 *.class
+*.keystore
+*.jks

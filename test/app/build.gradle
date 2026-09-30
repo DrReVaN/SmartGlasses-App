@@ -3,17 +3,15 @@ plugins {
 }
 
 android {
-    compileSdk 31
-    buildToolsVersion "30.0.3"
+    namespace 'com.test'
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.test"
         minSdk 21
-        targetSdk 31
-        versionCode 1
-        versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        targetSdk 36
+        versionCode 2
+        versionName "1.1.0"
     }
 
     buildTypes {
@@ -23,17 +21,25 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    testOptions { unitTests.includeAndroidResources = true }
+    lint { abortOnError = true; warningsAsErrors = true; checkReleaseBuilds = true }
+    def signing = ['SMARTGLASSES_KEYSTORE','SMARTGLASSES_STORE_PASSWORD','SMARTGLASSES_KEY_ALIAS','SMARTGLASSES_KEY_PASSWORD'].collect { System.getenv(it) }
+    if (signing.every { it }) {
+        signingConfigs {
+            ownerRelease {
+                storeFile file(signing[0]); storePassword signing[1]
+                keyAlias signing[2]; keyPassword signing[3]
+            }
+        }
+        buildTypes.release.signingConfig signingConfigs.ownerRelease
     }
 }
 
 dependencies {
 
-    implementation 'androidx.appcompat:appcompat:1.4.0'
-    implementation 'com.google.android.material:material:1.4.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.2'
-    testImplementation 'junit:junit:4.+'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.3'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.16.1'
 }

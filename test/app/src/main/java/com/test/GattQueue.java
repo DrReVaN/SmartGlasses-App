@@ -15,8 +15,14 @@ public final class GattQueue {
     public static final class Operation {
         public final UUID uuid;
         public final byte[] data; // null means read
+        public final long timeoutMs;
+        public final Runnable completed;
         public Operation(UUID uuid, byte[] data) {
+            this(uuid, data, 5000, null);
+        }
+        public Operation(UUID uuid, byte[] data, long timeoutMs, Runnable completed) {
             this.uuid = uuid; this.data = data == null ? null : data.clone();
+            this.timeoutMs = timeoutMs; this.completed = completed;
         }
     }
     private final Driver driver;
@@ -34,11 +40,14 @@ public final class GattQueue {
     }
     public void wake() { pump(); }
     public void clear() { operations.clear(); inFlight = false; attempts = 0; ++generation; }
+    public boolean idle() { return operations.isEmpty(); }
     public void complete(UUID uuid, boolean success) {
         if (!inFlight || operations.isEmpty() || !operations.peek().uuid.equals(uuid)) return;
         if (!success) { fail("Bluetooth write/read rejected"); return; }
-        operations.remove(); inFlight = false; attempts = 0; ++generation;
-        queuedAt = driver.now(); pump();
+        Operation done = operations.remove(); inFlight = false; attempts = 0; ++generation;
+        queuedAt = driver.now();
+        if (done.completed != null) done.completed.run();
+        pump();
     }
     private void fail(String reason) { clear(); driver.failed(reason); }
     private void pump() {
@@ -56,6 +65,6 @@ public final class GattQueue {
         inFlight = true;
         driver.later(() -> {
             if (generation == token && inFlight) fail("Bluetooth operation timed out");
-        }, 5000);
+        }, operations.peek().timeoutMs);
     }
 }

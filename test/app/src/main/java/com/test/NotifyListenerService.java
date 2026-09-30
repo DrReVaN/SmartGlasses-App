@@ -1,49 +1,37 @@
 package com.test;
-
 import android.app.Notification;
-import android.content.Intent;
-import android.os.Bundle;
-import android.os.IBinder;
+import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
-
-import androidx.core.app.NotificationCompat;
-
-/**
- * Service for managing notifications and sending them via a intent Broadcast
- * to the DeviceControlActivity.
- */
-
+import java.util.HashSet;
+import java.util.Set;
+/** System-bound listener; text delivery remains inside this process. */
 public class NotifyListenerService extends NotificationListenerService {
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        return super.onBind(intent);
+    public static volatile boolean connected;
+    private final Handler main=new Handler(Looper.getMainLooper());
+    private final NotificationDeduplicator dedup=new NotificationDeduplicator();
+    @Override public void onListenerConnected() { connected=true; main.post(BluetoothLeService::listenerStateChanged); }
+    @Override public void onListenerDisconnected() { connected=false; main.post(BluetoothLeService::listenerStateChanged); }
+    @Override public void onNotificationPosted(StatusBarNotification sbn) { main.post(() -> forward(sbn)); }
+    private void forward(StatusBarNotification sbn) {
+        if (sbn == null || sbn.getPackageName().equals(getPackageName())) return;
+        SharedPreferences prefs=getSharedPreferences("glasses",MODE_PRIVATE);
+        Set<String> known=new HashSet<>(prefs.getStringSet("known_apps",new HashSet<>()));
+        if (known.size()<64 && known.add(sbn.getPackageName())) prefs.edit().putStringSet("known_apps",known).apply();
+        if (!prefs.getBoolean("forward",true) || prefs.getStringSet("blocked_apps",new HashSet<>()).contains(sbn.getPackageName())) return;
+        Notification notification=sbn.getNotification();
+        if ((notification.flags & (Notification.FLAG_GROUP_SUMMARY | Notification.FLAG_ONGOING_EVENT | Notification.FLAG_LOCAL_ONLY)) != 0) return;
+        String text=NotificationText.read(notification);
+        if (text != null && dedup.accept(sbn.getKey(),text,SystemClock.elapsedRealtime())) BluetoothLeService.deliverNotification(text);
     }
-
-    @Override
-    public void onNotificationPosted(StatusBarNotification sbn){
-
-        Notification notification = sbn.getNotification();
-        Bundle bundle = notification.extras;
-
-        if (bundle.getString(NotificationCompat.EXTRA_TITLE) != null && bundle.getString(NotificationCompat.EXTRA_TEXT) != null) {
-            String from = bundle.getString(NotificationCompat.EXTRA_TITLE);
-            String message = bundle.getString(NotificationCompat.EXTRA_TEXT);
-
-            String notifyInfoText;
-
-            notifyInfoText = from + ": " + message;
-
-            Intent notifyIntent = new Intent("com.test.notifyListener");
-            notifyIntent.putExtra("Notification Info", notifyInfoText);
-            sendBroadcast(notifyIntent);
-        }
+    @Override public void onNotificationRemoved(StatusBarNotification sbn) {
+        if (sbn != null) main.post(() -> dedup.remove(sbn.getKey()));
     }
-
-    @Override
-    public void onNotificationRemoved(StatusBarNotification sbn){
-
+    @Override public void onDestroy() {
+        connected=false; main.removeCallbacksAndMessages(null); dedup.clear();
+        BluetoothLeService.listenerStateChanged(); super.onDestroy();
     }
-
 }

@@ -1,26 +1,17 @@
-# Smartglasses companion app — development update
+# Smartglasses companion — Android 1.1.0
 
-This branch matches [firmware 0.2.0](https://github.com/DrReVaN/Glasses_V0.1_BLE/tree/dev/firmware-fixes-ota).
+Companion for the WB35 Smartglasses running [firmware 0.2.0](https://github.com/DrReVaN/Glasses_V0.1_BLE/tree/dev/firmware-fixes-ota).
 
-The app now uses an asynchronous, bounded GATT operation queue. Each fragment waits for its write callback; failed writes, disconnects and timeouts abort the transfer. Bluetooth bonding happens before queued writes start. Compare the six-digit number with the glasses and hold pad 1 for one second to approve; pad 3 rejects. Open the pairing window with pads 1 and 3 held together for three seconds.
+This development branch includes runtime Bluetooth permissions, immediate ten-second scanning, protected in-process notification delivery, a foreground connection service with bounded reconnect, message expiry/loss counters, correct notification style handling, full service validation and an Android client for the project's CPU1 OTA protocol.
 
-Text is limited to 252 UTF-8 bytes without splitting a Unicode code point. Packets contain two header bytes and at most 18 payload bytes. Time synchronization uses ASCII HHmmddMMyyyy after discovery and once per minute. The firmware continues time locally. Characteristic objects are rediscovered after reconnect.
+Pairing requires comparing the six-digit number on phone and glasses. Hold pads 1+3 for three seconds to open pairing, pad 1 for one second to accept, or pad 3 to reject. Enable notification access separately in Android settings.
 
-## Build and tests
+For OTA, first install the prepared bootloader once by ST-Link. Select the matching application BIN and JSON package in the app, start the update and approve `OTA?` on the glasses. Interrupted uploads can be restarted in the recovery bootloader. CPU2/FUS updates and automatic rollback are not supported.
 
-Use JDK 11, Android SDK platform 31 and Build Tools **30.0.3**. From `test/` run:
-
-```text
-gradlew testDebugUnitTest assembleDebug --no-daemon
-```
-
-The queue and protocol regression suite also runs without an Android SDK:
+Build with JDK 21 and Android SDK 36. From `test/`:
 
 ```text
-javac -encoding UTF-8 -d build/tests test/app/src/main/java/com/test/GattQueue.java test/app/src/main/java/com/test/SmartglassesProtocol.java tests/GattQueueTest.java
-java -cp build/tests GattQueueTest
+gradlew testDebugUnitTest lintDebug assembleDebug --no-daemon
 ```
 
-GitHub Actions runs both checks and uploads a debug APK. Actual Android BLE pairing, permissions and reconnect behavior still require a phone/device test.
-
-Firmware OTA is prepared in the firmware repository with a desktop BLE client and installation instructions. The Android app does not contain an OTA upload screen.
+CI builds a debug APK and uploads test/lint reports. See [Android setup, OTA, signing and acceptance tests](docs/ANDROID.md) for details and remaining physical-device verification. The application ID remains `com.test` for existing installations; versionCode is now 2.
