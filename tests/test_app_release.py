@@ -36,6 +36,27 @@ class AppReleaseTests(unittest.TestCase):
             apk(b,'CI','different code')
             with self.assertRaises(ValueError):release.compare_builds(a,b)
 
+    def test_dex_reordering_still_rejects_code_resources_and_missing_dex(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            a,b=[Path(temporary)/name for name in ['signed.apk','ci.apk']]
+            def apk(path,code,resource='same',include=True):
+                with zipfile.ZipFile(path,'w') as z:
+                    if include:z.writestr('classes2.dex',code)
+                    z.writestr('resources.arsc',resource)
+            def normalize(data,sdk):
+                if data in {b'ordered A',b'ordered B'}:return {'classes.dex':b'same program'}
+                return {'classes.dex':data}
+            with patch.object(release,'normalized_dex',normalize):
+                apk(a,'ordered A');apk(b,'ordered B');release.compare_builds(a,b,'sdk')
+                apk(b,'changed program')
+                with self.assertRaises(ValueError):release.compare_builds(a,b,'sdk')
+                apk(b,'ordered B','changed resources')
+                with self.assertRaises(ValueError):release.compare_builds(a,b,'sdk')
+                apk(b,'ordered B',include=False)
+                with self.assertRaises(ValueError):release.compare_builds(a,b,'sdk')
+                apk(b,'ordered B')
+                with self.assertRaises(ValueError):release.compare_builds(a,b)
+
     def test_publication_uses_draft_id_and_never_overwrites_an_existing_apk(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);directory=root/'releases/android/1.3.0';directory.mkdir(parents=True)

@@ -63,15 +63,34 @@ def verified(sdk=None,reference=None):
         badging=run(str(aapt),'dump','badging',str(apk))
         if not re.search(r"package: name='com.test' versionCode='"+str(code)+r"' versionName='"+re.escape(version)+"'",badging) or "sdkVersion:'21'" not in badging:
             raise ValueError('Actual APK identity differs')
-    if reference: compare_builds(apk,Path(reference))
+    if reference: compare_builds(apk,Path(reference),sdk)
     return info
 
-def compare_builds(signed,reference):
+def normalized_dex(data,sdk):
+    # D8 can serialize identical DEX structures in different data-section order
+    # across incremental/clean builds. Rewrite both with one worker, retaining
+    # debug information, annotations and assertions; never desugar or shrink.
+    with tempfile.TemporaryDirectory() as temporary:
+        directory=Path(temporary);source=directory/'input.dex';source.write_bytes(data)
+        output=directory/'out';output.mkdir()
+        d8=Path(sdk)/'build-tools/35.0.0'/('d8.bat' if os.name=='nt' else 'd8')
+        run(str(d8),'--debug','--no-desugaring','--force-passthrough-assertions',
+            '--min-api','21','--thread-count','1','--output',str(output),str(source))
+        paths=sorted(output.glob('*.dex'))
+        if not paths: raise ValueError('DEX normalization produced no code')
+        return {p.name:p.read_bytes() for p in paths}
+
+def compare_builds(signed,reference,sdk=None):
     def content(path):
         with zipfile.ZipFile(path) as archive:
             return {p:archive.read(p) for p in archive.namelist() if not p.startswith('META-INF/') and not p.endswith('/') and p!='stamp-cert-sha256'}
     actual,expected=content(signed),content(reference)
-    different=sorted(p for p in set(actual)|set(expected) if actual.get(p)!=expected.get(p))
+    different=[]
+    for p in sorted(set(actual)|set(expected)):
+        if actual.get(p)==expected.get(p): continue
+        if sdk and re.fullmatch(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex',p) and p in actual and p in expected:
+            if normalized_dex(actual[p],sdk)==normalized_dex(expected[p],sdk): continue
+        different.append(p)
     if different: raise ValueError('Signed APK differs from CI build: '+', '.join(different))
 
 def prepare(apk,sdk):
