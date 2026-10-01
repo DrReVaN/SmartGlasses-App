@@ -18,6 +18,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
 import java.util.zip.CRC32;
+import java.time.Duration;
 import static org.junit.Assert.*;
 
 /** Controlled ATT responses exercise the actual service, including failed radio sessions. */
@@ -237,6 +238,31 @@ public class OtaLifecycleTest {
         ReflectionHelpers.setField(service,"awaitingVerification",true);
         ReflectionHelpers.setField(service,"retries",8); lose();
         assertFalse(service.updating()); assertEquals(service.getString(R.string.update_reconnect_failed),service.detail());
+    }
+    @Test public void normalDisconnectKeepsTryingAfterInitialRetryBudget() {
+        Shadows.shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_ON);
+        ReflectionHelpers.setField(service,"retries",8); ControlledGatt old=radio; lose();
+        assertTrue(old.closed); assertEquals(service.getString(R.string.retry_waiting),service.detail());
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(59));
+        assertNull(ReflectionHelpers.getField(service,"gatt"));
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1));
+        BluetoothGatt next=ReflectionHelpers.getField(service,"gatt"); assertNotNull(next);
+        assertEquals(BluetoothLeService.State.CONNECTING,service.state());
+        // A subsequent failed attempt schedules another one without overflowing the retry counter.
+        callback.onConnectionStateChange(next,133,BluetoothProfile.STATE_DISCONNECTED);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(9,(int)ReflectionHelpers.getField(service,"retries"));
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(60));
+        assertNotNull(ReflectionHelpers.getField(service,"gatt"));
+        assertFalse(service.updating());
+    }
+    @Test public void explicitDisconnectCancelsLongRangeReconnect() {
+        Shadows.shadowOf(BluetoothAdapter.getDefaultAdapter()).setState(BluetoothAdapter.STATE_ON);
+        ReflectionHelpers.setField(service,"retries",8); lose(); service.disconnect();
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(2));
+        assertNull(ReflectionHelpers.getField(service,"gatt"));
+        assertEquals(BluetoothLeService.State.DISCONNECTED,service.state());
+        assertFalse(service.getSharedPreferences("glasses",0).getBoolean("connection_enabled",true));
     }
     @Test public void wrongFullServiceUuidIsRejectedBeforePairingOrWriting() {
         radio.services.remove(GlassesProfile.OTA);

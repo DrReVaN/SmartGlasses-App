@@ -275,14 +275,15 @@ public class BluetoothLeService extends Service {
         }
         closeGatt(); setState(State.ERROR,why);
         if (!desired) return;
-        if (++retries>8) {
+        retries=Math.min(retries+1,9);
+        if (retries>8) {
             // Never leave the UI locked if the post-update reconnect cannot complete.
             boolean updatePending=updating() || state==State.VERIFYING;
             updating=false; committing=false; controlSent=false; awaitingVerification=false; releaseWake();
             if (updatePending) updateFailure=getString(R.string.update_reconnect_failed);
-            detail=updateFailure.isEmpty() ? getString(R.string.retry_exhausted) : updateFailure; publish(); return;
+            detail=updateFailure.isEmpty() ? getString(R.string.retry_waiting) : updateFailure; publish();
         }
-        long delay=Math.min(30000,1000L << Math.min(retries-1,5));
+        long delay=retries>8 ? 60000 : Math.min(30000,1000L << Math.min(retries-1,5));
         int token=connectionToken;
         main.postDelayed(() -> { if (token==connectionToken && desired) connect(); },delay);
     }

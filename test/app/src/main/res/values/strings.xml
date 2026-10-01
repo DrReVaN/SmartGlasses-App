@@ -37,7 +37,7 @@
     <string name="connection_error">Verbindung unterbrochen</string>
     <string name="connection_lost">Verbindung verloren. Wiederverbindung wird versucht.</string>
     <string name="connection_timeout">Keine Antwort der Brille. Wiederverbindung wird versucht.</string>
-    <string name="retry_exhausted">Die Brille ist weiterhin nicht erreichbar. Aufwecken und erneut verbinden.</string>
+    <string name="retry_waiting">Brille außer Reichweite. Die App versucht weiterhin jede Minute, sich wieder zu verbinden. „Verbindung beenden“ beendet diese Versuche.</string>
     <string name="transfer_failed">Übertragung fehlgeschlagen. Wiederverbindung wird versucht.</string>
     <string name="unsupported_device">Dieses Gerät bietet nicht das unterstützte Smartglasses-Protokoll. Es wurde nicht gekoppelt.</string>
     <string name="unsupported_version">Diese Firmwareversion wird nicht unterstützt.</string>
