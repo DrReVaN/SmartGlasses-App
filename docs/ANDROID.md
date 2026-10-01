@@ -30,7 +30,7 @@ The custom CPU1 OTA bootloader must first be installed together with the applica
 4. Normal texts and time writes pause. The client reconnects, verifies bootloader mode, sends `SGU1` with size and CRC, then offset-prefixed chunks of up to 16 bytes, each waiting for its write acknowledgement. BEGIN allows a bounded 15-second erase response; DATA allows five seconds; END allows ten seconds. A bounded wake lock keeps the phone CPU awake during transfer.
 5. The glasses verify and commit the image before acknowledging `END1`. The app then reconnects and reads the application version/mode before reporting success. A percentage of 100 alone does not mean final validation succeeded.
 
-There is one application slot. After interruption the previous application may no longer be available, but the bootloader remains reachable for a full new upload. Upload failure/cancellation never automatically restarts flashing; select **Update starten** again after reconnect. Keep the glasses powered. CRC/SHA verify integrity, not the publisher's identity: there is no firmware signature or anti-rollback mechanism. Use trusted build packages. At present the supported protocol/package version is 0.2.0. New incompatible firmware versions require corresponding client updates.
+There is one application slot. After interruption the previous application may no longer be available, but the bootloader remains reachable for a full new upload. Upload failure/cancellation never automatically restarts flashing; select **Update starten** again after reconnect. Keep the glasses powered. CRC/SHA verify integrity, not the publisher's identity: there is no firmware signature or anti-rollback mechanism. Use trusted build packages. The OTA protocol remains format 1; canonical firmware release numbers are independent of the discovery bytes. App 1.2.0 and newer support the extended firmware identity and GitHub firmware releases. See FIRMWARE_RELEASES.md for updates and rollback.
 
 ## Build, tests and signing
 
@@ -83,3 +83,7 @@ SMARTGLASSES_KEY_PASSWORD
 | Ortungsprototype | Removed from the companion; no false position estimates. |
 | Lint/tests/tooling | Current SDK baseline, pinned tools/tests, stale resources removed and strict CI checks. |
 | Android OTA | Validated package selection, physical approval, acknowledged transfer, recovery and post-reboot verification. |
+
+## Android app updates from 1.3.0
+
+See [APP_UPDATES.md](APP_UPDATES.md). Official APK releases are signed locally with the existing development identity and published after CI compares the packaged application with its own build. The independent CI debug artifact keeps its CI signing identity and is not a replacement package for this release series. App checks are separate from glasses firmware checks and work without BLE connectivity.

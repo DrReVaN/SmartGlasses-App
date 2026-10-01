@@ -23,6 +23,7 @@ public class DeviceScanActivity extends Activity {
     private BluetoothLeScanner scanner;
     private ArrayAdapter<String> rows;
     private TextView status;
+    private AppUpdateUi appUpdates;
     private Button search;
     private boolean scanning, visible;
     private int generation;
@@ -36,6 +37,7 @@ public class DeviceScanActivity extends Activity {
         if (Build.VERSION.SDK_INT>=23 && Build.VERSION.SDK_INT<=30) Ui.button(this,root,R.string.location_settings,v -> startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)));
         Ui.button(this,root,R.string.notification_settings,v -> Ui.notificationSettings(this));
         Ui.button(this,root,R.string.open_controls,v -> startActivity(new Intent(this,DeviceControlActivity.class)));
+        appUpdates=new AppUpdateUi(this,root);
         ListView list=new ListView(this);
         rows=new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,new ArrayList<>());
         list.setAdapter(rows); root.addView(list,new LinearLayout.LayoutParams(-1,0,1));
@@ -50,6 +52,8 @@ public class DeviceScanActivity extends Activity {
         adapter=manager==null ? null : manager.getAdapter();
         if (adapter==null) { search.setEnabled(false); status.setText(R.string.ble_unavailable); }
     }
+    @Override protected void onStart() { super.onStart(); appUpdates.start(); }
+    @Override protected void onStop() { appUpdates.stop(); super.onStop(); }
     @Override protected void onResume() { super.onResume(); visible=true; if (!BlePermissions.canScan(this)) status.setText(R.string.bluetooth_permission); }
     @Override protected void onPause() { visible=false; stopScan(); super.onPause(); }
     @Override protected void onDestroy() { main.removeCallbacksAndMessages(null); super.onDestroy(); }
@@ -82,6 +86,7 @@ public class DeviceScanActivity extends Activity {
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
+        if(appUpdates.result(request)) return;
         if (request==ENABLE) { if (result==RESULT_OK) requestScan(); else status.setText(R.string.bluetooth_off); }
     }
     private final Runnable timeout=() -> { stopScan(); status.setText(devices.isEmpty() ? R.string.scan_empty : R.string.scan_finished); };

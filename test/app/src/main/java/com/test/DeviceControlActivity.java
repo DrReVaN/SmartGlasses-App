@@ -14,6 +14,7 @@ import java.util.*;
 public class DeviceControlActivity extends Activity implements BluetoothLeService.Listener {
     private static final int BINARY=10, MANIFEST=11, PERMISSIONS=12;
     private BluetoothLeService service;
+    private AppUpdateUi appUpdates;
     private boolean bound, autoConnect;
     private TextView status, detail, statistics, listener, packageInfo;
     private TextView firmwareVersion, firmwareStatus, firmwareOffer;
@@ -82,16 +83,18 @@ public class DeviceControlActivity extends Activity implements BluetoothLeServic
         startUpdate=Ui.button(this,root,R.string.start_update,v -> confirmUpdate());
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal); progress.setMax(100); root.addView(progress);
         cancelUpdate=Ui.button(this,root,R.string.cancel_update,v -> { if (service!=null) service.cancelUpdate(); });
+        appUpdates=new AppUpdateUi(this,root);
         changed();
     }
     @Override protected void onStart() {
-        super.onStart(); bound=bindService(new Intent(this,BluetoothLeService.class),connection,BIND_AUTO_CREATE);
+        super.onStart(); appUpdates.start(); bound=bindService(new Intent(this,BluetoothLeService.class),connection,BIND_AUTO_CREATE);
     }
     @Override protected void onResume() {
         super.onResume(); changed();
         if (autoConnect) { autoConnect=false; connectDevice(); }
     }
     @Override protected void onStop() {
+        appUpdates.stop();
         if (service!=null) service.removeListener(this);
         if (bound) { unbindService(connection); bound=false; }
         service=null; super.onStop();
@@ -127,7 +130,7 @@ public class DeviceControlActivity extends Activity implements BluetoothLeServic
         send.setEnabled(ready && !updating);
         diagnostics.setEnabled(service!=null && service.canReadDiagnostics());
         select.setEnabled(service!=null && !updating && !service.loading());
-        startUpdate.setEnabled((ready || boot) && !updating && service.image()!=null);
+        startUpdate.setEnabled((ready || boot) && !updating && !AppUpdates.installationPending && service.image()!=null);
         cancelUpdate.setEnabled(service!=null && service.canCancelUpdate());
         firmwareVersion.setText(getString(R.string.firmware_installed,service==null ? getString(R.string.firmware_unread) : service.installedLabel()));
         firmwareStatus.setText(service==null ? "" : service.catalogStatus());
@@ -145,6 +148,7 @@ public class DeviceControlActivity extends Activity implements BluetoothLeServic
         else if (service!=null && service.image()!=null) packageInfo.setText(getString(R.string.package_valid,service.image().size(),service.image().version));
         else packageInfo.setText(R.string.package_missing);
         connect.setEnabled(!updating);
+        if(appUpdates!=null) appUpdates.changed();
     }
     private void chooseVersion() {
         if(service==null) return;
@@ -184,6 +188,7 @@ public class DeviceControlActivity extends Activity implements BluetoothLeServic
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
+        if(appUpdates.result(request)) { changed();return; }
         if (result!=RESULT_OK || data==null || data.getData()==null) return;
         Uri uri=data.getData();
         try { getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION); }

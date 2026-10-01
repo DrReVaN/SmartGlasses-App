@@ -70,13 +70,19 @@ public final class FirmwareRepository {
         catch(IOException e) { atomic.failWrite(out); throw e; }
     }
     public static final class HttpsTransport implements Transport {
+        private final String repository;
+        public HttpsTransport() { this(FirmwareRelease.REPOSITORY); }
+        public HttpsTransport(String repository) {
+            if(!FirmwareRelease.REPOSITORY.equals(repository) && !"DrReVaN/SmartGlasses-App".equals(repository)) throw new IllegalArgumentException("Repository");
+            this.repository=repository;
+        }
         @Override public byte[] get(String address,int limit) throws IOException {
             URL url=new URL(address);
             for(int redirects=0;redirects<=5;redirects++) {
-                if(!allowed(url,redirects==0)) throw new IOException("Untrusted download address");
+                if(!allowed(url,redirects==0,repository)) throw new IOException("Untrusted download address");
                 HttpsURLConnection connection=(HttpsURLConnection)url.openConnection();
                 connection.setInstanceFollowRedirects(false); connection.setConnectTimeout(15000); connection.setReadTimeout(20000);
-                connection.setRequestProperty("User-Agent","Smartglasses-App/1.2.0");
+                connection.setRequestProperty("User-Agent","Smartglasses-App");
                 connection.setRequestProperty("Accept","api.github.com".equals(url.getHost()) ? "application/vnd.github+json" : "application/octet-stream");
                 if("api.github.com".equals(url.getHost())) connection.setRequestProperty("X-GitHub-Api-Version","2022-11-28");
                 try {
@@ -93,10 +99,13 @@ public final class FirmwareRepository {
             throw new IOException("Too many redirects");
         }
         static boolean allowed(URL url,boolean initial) {
+            return allowed(url,initial,FirmwareRelease.REPOSITORY);
+        }
+        static boolean allowed(URL url,boolean initial,String repository) {
             if(!"https".equals(url.getProtocol()) || url.getUserInfo()!=null || url.getRef()!=null || (url.getPort()!=-1 && url.getPort()!=443)) return false;
             String host=url.getHost();
-            if("api.github.com".equals(host)) return url.getPath().equals("/repos/"+FirmwareRelease.REPOSITORY+"/releases");
-            if("github.com".equals(host)) return url.getPath().startsWith("/"+FirmwareRelease.REPOSITORY+"/releases/download/");
+            if("api.github.com".equals(host)) return url.getPath().equals("/repos/"+repository+"/releases");
+            if("github.com".equals(host)) return url.getPath().startsWith("/"+repository+"/releases/download/");
             return !initial && ("release-assets.githubusercontent.com".equals(host) || "objects.githubusercontent.com".equals(host));
         }
     }

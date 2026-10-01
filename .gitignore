@@ -5,3 +5,5 @@
 *.class
 *.keystore
 *.jks
+__pycache__/
+*.pyc

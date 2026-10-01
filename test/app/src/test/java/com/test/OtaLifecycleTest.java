@@ -210,6 +210,11 @@ public class OtaLifecycleTest {
         assertTrue(old.closed); assertFalse(service.updating()); old.acknowledge();
         assertEquals(0,service.progress()); assertEquals(2,old.writes);
     }
+    @Test public void openingApkInstallerPreventsStartingFirmwareOta() {
+        AppUpdates.installationPending=true;
+        try { assertFalse(service.beginUpdate());assertNull(radio.pending); }
+        finally { AppUpdates.installationPending=false; }
+    }
     private void identifiedReconnect(int patch,boolean badCRC) {
         byte[] data=new byte[512]; ByteBuffer b=ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         b.putInt(0x20007800).putInt(0x0801014d); b.position(0x140);

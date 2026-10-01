@@ -93,6 +93,7 @@ public class BluetoothLeService extends Service {
     public int dropped() { return outbox.dropped()+missed; }
     public int sent() { return sent; }
     public int progress() { return progress; }
+    public static boolean firmwareUpdateRunning() { return active!=null && active.updating(); }
     public boolean updating() { return updating || awaitingVerification; }
     public boolean canReadDiagnostics() {
         return (state==State.READY || state==State.BOOTLOADER) && !updating() && queue.idle();
@@ -462,7 +463,7 @@ public class BluetoothLeService extends Service {
         }
     }
     public boolean beginUpdate() {
-        if (image==null || updating() || !(state==State.READY || state==State.BOOTLOADER)) return false;
+        if (AppUpdates.installationPending || image==null || updating() || !(state==State.READY || state==State.BOOTLOADER)) return false;
         updating=true; controlSent=false; committing=false; awaitingVerification=false; beginAccepted=false; updateFailure=""; progress=0;
         // Finish an already accepted ATT batch, but do not start another normal message.
         outbox.discardWaiting(); setState(State.UPDATE_WAIT,getString(R.string.update_wait_help)); pump();

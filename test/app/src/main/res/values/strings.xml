@@ -102,4 +102,22 @@
     <string name="update_verify_failed">Die Brille ist nach dem Update im Bootloader geblieben. Update erneut starten oder per Kabel prüfen.</string>
     <string name="update_reconnect_failed">Der Update-Abschluss konnte nicht geprüft werden. Brille aufwecken und erneut verbinden; bei Wiederherstellungsmodus das vollständige Paket erneut übertragen.</string>
     <string name="update_cancelled">Update abgebrochen.</string>
+    <string name="app_update_empty"></string>
+    <string name="app_update_installed">Android-App: %1$s</string>
+    <string name="app_update_check">Nach App-Updates suchen</string>
+    <string name="app_update_checking">App-Updates werden geprüft …</string>
+    <string name="app_update_current">App %1$s ist aktuell.</string>
+    <string name="app_update_available">App %1$s verfügbar</string>
+    <string name="app_update_confirm">Möchtest du die neue App herunterladen und installieren? Deine Einstellungen bleiben erhalten. Android fragt vor der Installation nochmals nach. Du kannst das Update auch später durchführen.</string>
+    <string name="app_update_download">App-Update herunterladen</string>
+    <string name="app_update_install">App-Update installieren</string>
+    <string name="app_update_downloading">App-Update wird heruntergeladen und geprüft …</string>
+    <string name="app_update_verified">App-Update geprüft. Bereit zur Installation.</string>
+    <string name="app_update_check_failed">App-Updates konnten nicht geprüft werden. Internetverbindung prüfen und erneut versuchen.</string>
+    <string name="app_update_download_failed">App-Paket konnte nicht sicher geprüft werden. Erneut herunterladen.</string>
+    <string name="app_update_identity">Die Signatur dieser App konnte nicht gelesen werden. App-Updateprüfung nicht verfügbar.</string>
+    <string name="app_update_permission">Erlaube einmalig in den Android-Einstellungen „Aus dieser Quelle zulassen“. Kehre danach zurück und tippe auf „App-Update installieren“.</string>
+    <string name="app_update_settings">Android-Einstellungen öffnen</string>
+    <string name="app_update_install_failed">Die Installation konnte nicht geöffnet werden. Erneut prüfen und installieren.</string>
+    <string name="app_update_ota_busy">Bitte zuerst das laufende Brillen-Firmwareupdate abschließen.</string>
 </resources>
