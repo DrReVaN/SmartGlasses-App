@@ -12,6 +12,19 @@ spec=importlib.util.spec_from_file_location('app_release',Path(__file__).resolve
 release=importlib.util.module_from_spec(spec);spec.loader.exec_module(release)
 
 class AppReleaseTests(unittest.TestCase):
+    def test_ci_wrapper_mode_is_allowed_but_content_changes_are_rejected(self):
+        state={'path':'test/gradlew','numstat':'0\t0\ttest/gradlew'}
+        def run(*args):
+            if '--numstat' in args:return state['numstat']
+            if 'HEAD' in args and '--' in args:return state['path']
+            return 'releases/android/1.3.0/Smartglasses-App-1.3.0.apk'
+        with patch.object(release,'run',run):
+            release.validate_source('a'*40)
+            state['numstat']='1\t1\ttest/gradlew'
+            with self.assertRaises(ValueError):release.validate_source('a'*40)
+            state['path']='test/app/src/main/java/com/test/AppUpdates.java'
+            with self.assertRaises(ValueError):release.validate_source('a'*40)
+
     def test_ci_comparison_ignores_signatures_but_checks_every_packaged_input(self):
         with tempfile.TemporaryDirectory() as temporary:
             a,b=[Path(temporary)/name for name in ['signed.apk','ci.apk']]

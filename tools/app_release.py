@@ -36,7 +36,11 @@ def validate_source(source):
     changed=run('git','diff','--name-only',source,'HEAD').splitlines()
     if any(not p.startswith('releases/android/') and p not in {'tools/app_release.py','tests/test_app_release.py'} for p in changed):
         raise ValueError('APK source differs from current application/build inputs')
-    if run('git','diff','--name-only','HEAD','--','test').strip(): raise ValueError('Uncommitted app inputs')
+    for path in run('git','diff','--name-only','HEAD','--','test').splitlines():
+        # Linux CI makes the checked-in wrapper executable before building.
+        # Permit that mode-only change, never modified wrapper/source contents.
+        if path=='test/gradlew' and run('git','diff','--numstat','HEAD','--',path)=='0\t0\ttest/gradlew': continue
+        raise ValueError('Uncommitted app inputs')
 
 def verified(sdk=None,reference=None):
     directory=folder()
